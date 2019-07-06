@@ -20,7 +20,7 @@ class PoePrices {
 
       var url = "https://www.poeprices.info/query";
       var form = {
-        league: "Legion",
+        league: config.get("league"),
         itemtext: itemText
       };
 
