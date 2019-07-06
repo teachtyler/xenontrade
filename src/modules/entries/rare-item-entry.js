@@ -6,12 +6,12 @@ const https = require("https");
 
 class RareItemEntry extends PriceCheckEntry {
   /**
-  * Creates a new RareItemEntry object
-  *
-  * @constructor
-  * @param {Object} poePrices poeprices.info result, including item text in base 64
-  * @param {Parser} parser Parser object
-  */
+   * Creates a new RareItemEntry object
+   *
+   * @constructor
+   * @param {Object} poePrices poeprices.info result, including item text in base 64
+   * @param {Parser} parser Parser object
+   */
   constructor(poePrices, parser) {
     super();
     this.poePrices = poePrices;
@@ -31,25 +31,80 @@ class RareItemEntry extends PriceCheckEntry {
     // Set buttons, links, prediction explanation and feedback elements
     super.setCloseable(true);
     super.enableToggle("expand");
-    super.enableExternalLinks();
-    this._addExplanationTable();
-    this._enableFeedbackElements();
+    // super.enableExternalLinks();
+    // this._addExplanationTable();
+    // this._enableFeedbackElements();
 
     // Enable autoclose if configured
-    if(config.get("autoclose.enabled") && config.get("autoclose.timeouts.rare.enabled")) {
-      if(!(config.get("autoclose.threshold.enabled")
-        && (this.poePrices.price.min > config.get("autoclose.threshold.value") || this.poePrices.price.currency === "exalt"))) {
+    if (
+      config.get("autoclose.enabled") &&
+      config.get("autoclose.timeouts.rare.enabled")
+    ) {
+      if (
+        !(
+          config.get("autoclose.threshold.enabled") &&
+          (this.poePrices.price.min > config.get("autoclose.threshold.value") ||
+            this.poePrices.price.currency === "exalt")
+        )
+      ) {
         super.enableAutoClose(config.get("autoclose.timeouts.rare.value"));
       }
     }
   }
 
   _buildReplacements() {
-    var baseType = this.parser.getBaseType();
-    var url = "https://www.poeprices.info/api?l=" + config.get("league") + "&i=" + this.poePrices.encodedItemText + "&w=1";
-    var currencyIcon = "", currencyName = "";
+    const formatPrices = priceStr => {
+      const priceInfo = {};
+      let prices = priceStr;
+      String.prototype.insert = function(index, string) {
+        if (index > 0)
+          return (
+            this.substring(0, index) +
+            string +
+            this.substring(index, this.length)
+          );
 
-    if(this.poePrices.price.currency === "chaos") {
+        return string + this;
+      };
+
+      const isChaos = prices.includes("chaos");
+      const isExalted = prices.includes("exalted");
+
+      if (isChaos) {
+        prices = prices.insert(prices.indexOf("chaos"), " ");
+        const id = prices.indexOf("chaos");
+        prices = prices.insert(id + 5, " ");
+      } else if (isExalted) {
+        prices = prices.insert(prices.indexOf("exalted"), " ");
+        const id = prices.indexOf("exalted");
+        prices = prices.insert(id + 7, " ");
+      }
+
+      prices = prices.split(" ");
+
+      const priceMap = { 0: "min", 2: "max", 3: "currency", 4: "recommended" };
+      for (var i in prices) {
+        const key = priceMap[i];
+        if (key) {
+          priceInfo[key] = prices[i];
+        }
+      }
+      return priceInfo;
+    };
+
+    const priceInfo = formatPrices(this.poePrices.price);
+
+    var baseType = this.parser.getBaseType();
+    var url =
+      "https://www.poeprices.info/api?l=" +
+      config.get("league") +
+      "&i=" +
+      this.poePrices.encodedItemText +
+      "&w=1";
+    var currencyIcon = "",
+      currencyName = "";
+
+    if (priceInfo.currency === "chaos") {
       currencyName = "Chaos Orb";
     } else {
       currencyName = "Exalted Orb";
@@ -60,70 +115,90 @@ class RareItemEntry extends PriceCheckEntry {
     var replacements = [
       { find: "item-name", replace: this.parser.getName() },
       { find: "item-baseType", replace: baseType },
-      { find: "item-value-min", replace: this.poePrices.price.min },
-      { find: "item-value-max", replace: this.poePrices.price.max },
-      { find: "currency-name", replace: currencyName },
+      { find: "item-value-min", replace: priceInfo.min },
+      { find: "item-value-max", replace: priceInfo.max },
+      { find: "item-value-recommended", replace: priceInfo.recommended },
+      { find: "currency-name", replace: priceInfo.currency },
       { find: "currency-icon", replace: currencyIcon },
-      { find: "link", replace: url}
+      { find: "link", replace: url }
     ];
 
-    if(BaseTypeIcons.hasOwnProperty(baseType)) {
-      replacements.push({ find: "item-icon", replace: BaseTypeIcons[baseType] });
+    if (BaseTypeIcons.hasOwnProperty(baseType)) {
+      replacements.push({
+        find: "item-icon",
+        replace: BaseTypeIcons[baseType]
+      });
     }
 
     return replacements;
   }
 
   _addExplanationTable() {
-    for(var modIndex in this.poePrices.price.pred_explanation) {
+    for (var modIndex in this.poePrices.price.pred_explanation) {
       var mod = this.poePrices.price.pred_explanation[modIndex];
       var percentage = (mod[1] * 100).toFixed(2);
 
-      $(".entry[data-id='" + this.id + "']").find("tbody:last-child").append(
-        "<tr><td class='percentage grey'>" + percentage + "%</td><td class='mod'>" + mod[0] + "</td></tr>"
-      );
+      $(".entry[data-id='" + this.id + "']")
+        .find("tbody:last-child")
+        .append(
+          "<tr><td class='percentage grey'>" +
+            percentage +
+            "%</td><td class='mod'>" +
+            mod[0] +
+            "</td></tr>"
+        );
     }
   }
 
   _enableFeedbackElements() {
     var self = this;
-    var textarea = $(".entry[data-id='" + this.id + "']").find("[data-comment]").find("textarea");
+    var textarea = $(".entry[data-id='" + this.id + "']")
+      .find("[data-comment]")
+      .find("textarea");
 
     textarea.focusout(function() {
       GUI.onFocus();
     });
 
     // Send feedback button
-    $(".entry[data-id='" + this.id + "']").find("[data-feedback-send]").click(function() {
-      self._sendFeedback();
-    });
+    $(".entry[data-id='" + this.id + "']")
+      .find("[data-feedback-send]")
+      .click(function() {
+        self._sendFeedback();
+      });
 
     // Feedback buttons (fair, high, low)
-    $(".entry[data-id='" + this.id + "']").find("[data-feedback]").each(function() {
-      $(this).click(function() {
-        self._feedbackButtonClick($(this));
+    $(".entry[data-id='" + this.id + "']")
+      .find("[data-feedback]")
+      .each(function() {
+        $(this).click(function() {
+          self._feedbackButtonClick($(this));
+        });
       });
-    });
   }
 
   _removeFeedbackButtons() {
-    $(".entry[data-id='" + this.id + "']").find("[data-feedback]").each(function() {
-      $(this).remove();
-    });
+    $(".entry[data-id='" + this.id + "']")
+      .find("[data-feedback]")
+      .each(function() {
+        $(this).remove();
+      });
   }
 
   _feedbackButtonClick(selector) {
-    var feedback = selector.attr("data-feedback")
+    var feedback = selector.attr("data-feedback");
 
     // Cancel auto-close if feedback button is pressed
-    if(this.timeout != null) {
+    if (this.timeout != null) {
       this.cancelAutoClose();
     }
 
-    if(feedback !== this.selectedFeedback) {
-      $(".entry[data-id='" + this.id + "']").find("[data-feedback]").each(function() {
-        $(this).removeClass("active");
-      });
+    if (feedback !== this.selectedFeedback) {
+      $(".entry[data-id='" + this.id + "']")
+        .find("[data-feedback]")
+        .each(function() {
+          $(this).removeClass("active");
+        });
 
       selector.addClass("active");
       this._toggleCommentBox(true);
@@ -136,15 +211,20 @@ class RareItemEntry extends PriceCheckEntry {
   }
 
   _toggleCommentBox(toggle) {
-    var selector = $(".entry[data-id='" + this.id + "']").find("[data-comment]");
+    var selector = $(".entry[data-id='" + this.id + "']").find(
+      "[data-comment]"
+    );
     selector.toggle(toggle);
 
     GUI.updateWindowHeight();
   }
 
   _sendFeedback() {
-    if(["fair", "low", "high"].includes(this.selectedFeedback)) {
-      var text = $(".entry[data-id='" + this.id + "']").find("[data-comment]").find("textarea").val();
+    if (["fair", "low", "high"].includes(this.selectedFeedback)) {
+      var text = $(".entry[data-id='" + this.id + "']")
+        .find("[data-comment]")
+        .find("textarea")
+        .val();
       this._toggleCommentBox(false);
       this._removeFeedbackButtons();
 
@@ -170,16 +250,18 @@ class RareItemEntry extends PriceCheckEntry {
         }
       };
 
-      var infoText = $(".entry[data-id='" + this.id + "']").find("[data-feedback-info]");
+      var infoText = $(".entry[data-id='" + this.id + "']").find(
+        "[data-feedback-info]"
+      );
       infoText.html("Sending feedback...");
 
-      var req = https.request(options, (res) => {
-        res.on("data", (d) => {
+      var req = https.request(options, res => {
+        res.on("data", d => {
           infoText.html("Thank you for your feedback!");
         });
       });
 
-      req.on("error", (e) => {
+      req.on("error", e => {
         infoText.html("An error occured while sending your feedback.");
       });
 

@@ -59,6 +59,7 @@ class Pricecheck {
     PoePrices.request(parser.getItemText())
     .then((result) => {
       entry.close();
+      console.log(result)
       new RareItemEntry(result, parser).add();
     })
     .catch((error) => {
